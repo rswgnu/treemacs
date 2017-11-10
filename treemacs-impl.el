@@ -373,6 +373,7 @@ FILE here is a list consisting of an absolute path and file attributes."
 This is something a of workaround to easily allow assigning icons to a FILE with
 a name like '.gitignore' without always having to check for both file extensions
 and special names like this."
+  (declare (pure t) (side-effect-free t))
   (let ((filename (f-filename file)))
     (save-match-data
       (if (string-match "\\.[^.]*\\'" filename)

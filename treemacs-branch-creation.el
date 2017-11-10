@@ -110,13 +110,24 @@ PARENT is the (optional) button under which this one is inserted.
 DEPTH indicates how deep in the filetree the current button is."
   (end-of-line)
   ;; for directories the icon is included in the prefix since it's always known
-  (insert prefix)
-  (treemacs--insert-button (f-filename path)
-                           'state     'dir-node-closed
-                           'abs-path  path
-                           'parent    parent
-                           'depth     depth
-                           'face      'treemacs-directory-face))
+  (list
+   prefix
+   (propertize (f-filename path)
+               'button '(t)
+               'category 'default-button
+               'state 'dir-node-closed
+               'abs-path path
+               'parent parent
+               'depth depth
+               'face 'treemacs-directory-face))
+  ;; (insert prefix)
+  ;; (treemacs--insert-button (f-filename path)
+  ;;                          'state     'dir-node-closed
+  ;;                          'abs-path  path
+  ;;                          'parent    parent
+  ;;                          'depth     depth
+  ;;                          'face      'treemacs-directory-face)
+  )
 
 (defsubst treemacs--insert-file-node (path prefix parent depth git-info)
   "Insert a directory node for PATH.
@@ -124,15 +135,21 @@ PREFIX is a string inserted as indentation.
 PARENT is the (optional) button under which this one is inserted.
 DEPTH indicates how deep in the filetree the current button is.
 GIT-INFO (if any) is used to determine the node's face."
-  (treemacs--insert-file-image path prefix)
-  (treemacs--insert-button (f-filename path)
-                           'state     'file-node-closed
-                           'abs-path  path
-                           'parent    parent
-                           'depth     depth
-                           'face      (if treemacs-git-integration
-                                          (treemacs--get-face path git-info)
-                                        'treemacs-file-face)))
+  (list
+   (concat prefix
+           (gethash (-> path (treemacs--file-extension) (downcase))
+                    treemacs-icons-hash
+                    treemacs-icon-fallback))
+   (propertize (f-filename path)
+               'button '(t)
+               'category 'default-button
+               'state 'file-node-closed
+               'abs-path path
+               'parent parent
+               'depth depth
+               'face (if treemacs-git-integration
+                         (treemacs--get-face path git-info)
+                       'treemacs-file-face))))
 
 (cl-defmacro treemacs--button-open (&key button new-state new-icon open-action post-open-action)
   "Open BUTTON.
@@ -159,16 +176,49 @@ NODE-NAME is the variable individual nodes are bound to in NODE-ACTION."
           (prefix (concat "\n" (make-string (* depth treemacs-indentation) ?\ )))
           (,node-name (cl-first ,nodes))
           (prev-button)
+          (T)
           ,@extra-vars)
      (when ,node-name
-       (setq prev-button (treemacs--button-at ,node-action))
-       ,first-node-action
-       (dolist (,node-name (cdr ,nodes))
-         (let ((b (treemacs--button-at ,node-action)))
-           (treemacs--button-put prev-button 'next-node b)
-           (setq prev-button (treemacs--button-put b 'prev-node prev-button)))))
+       ;; (setq prev-button (treemacs--button-at ,node-action))
+       ;; (push ,first-node-action T)
+       (dolist (,node-name ,nodes)
+         (--each ,node-action
+           (push it T))
+         ;; (push ,node-action T)
+         ;; (let ((b (treemacs--button-at ,node-action)))
+         ;;   ;; (treemacs--button-put prev-button 'next-node b)
+         ;;   ;; (setq prev-button (treemacs--button-put b 'prev-node prev-button))
+         ;;   )
+         ))
+     (let ((lst (nreverse T)))
+       (let ((p (point))
+             (end))
+         (apply #'insert lst)
+         (setq end (point))
+         (save-excursion
+           (goto-char (1+ p))
+           (while (>= end (point))
+             (treemacs--button-put (move-marker (make-marker) (point))))
+           ()))
+       ;; (print (treemacs--get-label-of (treemacs--current-button)))
+       ;; (let ((curr-btn)
+       ;;       (prev-btn))
+       ;;   (setq lst (cdr lst)
+       ;;         prev-btn (car lst)
+       ;;         lst (cddr lst)
+       ;;         curr-btn (car lst))
+       ;;   (when (and prev-btn curr-btn)
+       ;;     (treemacs--button-put prev-btn 'next-node curr-btn)
+       ;;     (treemacs--button-put curr-btn 'prev-node prev-btn))
+       ;;   (while lst
+       ;;     (setq lst (cddr lst)
+       ;;           prev-btn curr-btn
+       ;;           curr-btn (car lst))
+       ;;     (treemacs--button-put prev-btn 'next-node curr-btn)
+       ;;     (treemacs--button-put curr-btn 'prev-node prev-btn)))
+       )
      ,return-value))
-
+;; (global-set-key (kbd "C-x ü") #'(lambda () (interactive) (print (treemacs--get-label-of (treemacs--current-button)))))
 (defsubst treemacs--collapse-dirs (dirs root)
   "Display DIRS as collpased under ROOT.
 Go to each dir button, expand its label with the collpased dirs, set its new
