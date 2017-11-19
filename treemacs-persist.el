@@ -30,6 +30,16 @@
 
 (declare-function treemacs-mode "treemacs-mode")
 
+(defconst treemacs--log-file "~/Documents/TREEMACS-LOG")
+
+(defmacro treemacs--log-to-file (msg &rest args)
+   "Write a log statement given format string MSG and ARGS."
+   `(f-append
+     (format "%s %s\n"
+             (propertize "[Treemacs]" 'face 'font-lock-keyword-face)
+             (format ,msg ,@args))
+     'utf-8 treemacs--log-file))
+
 (defconst treemacs--persist-file (f-join user-emacs-directory ".cache" "treemacs-persist")
   "File treemacs uses to persist its current state.")
 
@@ -38,21 +48,28 @@
 ;;;###autoload
 (defun treemacs--restore ()
   "Restore the entire treemacs state saved by `treeemacs--persist'."
+  (treemacs--log-to-file "Call into restore")
+  (treemacs--log-to-file "Never persist = %s" treemacs-never-persist)
+  (treemacs--log-to-file "Id frame params not yet restored = %s" (--all? (null (frame-parameter it 'treemacs-id)) (frame-list)))
   ;; condition is true when we're running in eager restoration and the frameset is not yet restored
   ;; in this case this function will be run again, with restored frame parameters, in `desktop-after-read-hook'
   (unless (or treemacs-never-persist
               (--all? (null (frame-parameter it 'treemacs-id)) (frame-list)))
     ;; Abusing a timer like this (hopefully) guarantees that the restore runs after everything else and
     ;; the restored treemacs buffers remain visible
+    (treemacs--log-to-file "Starting timer")
     (run-with-timer
      1 nil
      (lambda ()
+       (treemacs--log-to-file "In timer")
        (-when-let- [b (get-buffer treemacs--desktop-helper-name)]
+         (treemacs--log-to-file "Killing desktop helper %s" b)
          (kill-buffer b))
        (dolist (frame (frame-list))
          (-when-let (scope-id (frame-parameter frame 'treemacs-id))
            (push (string-to-number scope-id) treemacs--taken-scopes)))
        (-when-let (persist-data (read (f-read treemacs--persist-file 'utf-8)))
+         (treemacs--log-to-file "Found persist data %s" persist-data)
          (dolist (buffer-data persist-data)
            ;; inhibit quit to quiet the error messages that crop up since this is in a timer
            (let ((inhibit-quit nil)
@@ -63,8 +80,9 @@
                (unless (-> frame (assq treemacs--buffer-access) (cdr) (buffer-live-p))
                  (save-selected-window
                    (with-selected-frame frame
-                     (push (cons frame (current-buffer)) treemacs--buffer-access)
                      (treemacs--init root)
+                     (push (cons frame (current-buffer)) treemacs--buffer-access)
+                     (treemacs--log-to-file "Restoring Buffer %s to Frame %s" (current-buffer) frame)
                      (bury-buffer (current-buffer))
                      (when (and (not (string= point "<root>"))
                                 (f-exists? point))
@@ -75,11 +93,14 @@
   "Save current state, allowing it to be restored with `treemacs--restore'.
 If `treemacs-never-persist' is non-nil it will instead delete any already
 persisted state so it will not be loaded on the next desktop read."
+  (treemacs--log-to-file "Call to persist")
   (if treemacs-never-persist
       (when (f-exists? treemacs--persist-file)
+        (treemacs--log-to-file "Never persist it t, deleting %s" treemacs--persist-file)
         (f-delete treemacs--persist-file))
     (-let [persist-dir (f-dirname treemacs--persist-file)]
       (unless (f-exists? persist-dir)
+        (treemacs--log-to-file "Creating persist dir %s" persist-dir)
         (f-mkdir persist-dir))
       (let (state)
         (dolist (access-pair treemacs--buffer-access)
@@ -90,6 +111,7 @@ persisted state so it will not be loaded on the next desktop read."
                         ,(cons "root" (treemacs--current-root))
                         ,(cons "point" (-if-let (b (treemacs--current-button)) (treemacs--nearest-path b) "<root>")))
                       state)))))
+        (treemacs--log-to-file "Writing persist state %s" state)
         (f-write (pp-to-string state) 'utf-8 treemacs--persist-file)))))
 
 (with-eval-after-load "desktop"
@@ -108,9 +130,11 @@ persisted state so it will not be loaded on the next desktop read."
 
   (defun treemacs--create-persist-helper-buffer ()
     "Create the desktop helper on shutdown for desktop mode to load treemacs."
+    (treemacs--log-to-file "Call to persist helper creation")
     (when (and (not treemacs-never-persist)
                (bound-and-true-p desktop-save-mode))
       (with-current-buffer (get-buffer-create treemacs--desktop-helper-name)
+        (treemacs--log-to-file "Creating persist helper %s" (current-buffer))
         (treemacs-mode)
         (read-only-mode -1)
         (insert "This buffer only exists so that desktop mode will load treemacs.\n")
@@ -120,11 +144,14 @@ persisted state so it will not be loaded on the next desktop read."
     "Fake-ish treemacs mode handler for desktop save mode.
 Works if run during the lazy restoration phase, otherwise
 `desktop-after-read-hook' will take care of treemacs."
+    (treemacs--log-to-file "Call to desktop handler")
     (treemacs--restore)
+    (treemacs--log-to-file "Complete call to restore, returning buffer %s" (current-buffer))
     (current-buffer))
 
   (defun treemacs--desktop-persist-advice (&rest _)
     "Persists treemacs alongside `desktop-save'."
+    (treemacs--log-to-file "Call to desktop persist advice")
     (treemacs--persist))
 
   (declare-function treemacs--desktop-persist-advice "treemacs-persist.el")
