@@ -81,7 +81,6 @@
                  (save-selected-window
                    (with-selected-frame frame
                      (treemacs--init root)
-                     (push (cons frame (current-buffer)) treemacs--buffer-access)
                      (treemacs--log-to-file "Restoring Buffer %s to Frame %s" (current-buffer) frame)
                      (bury-buffer (current-buffer))
                      (when (and (not (string= point "<root>"))
